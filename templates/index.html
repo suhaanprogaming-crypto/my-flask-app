@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Code Battle AI</title>
+  <style>
+    body {
+      font-family: 'Poppins', sans-serif;
+      background: linear-gradient(135deg, #e3f2fd, #bbdefb);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 40px;
+    }
+
+    h1 {
+      color: #0d47a1;
+      margin-bottom: 20px;
+    }
+
+    #question {
+      width: 60%;
+      padding: 12px;
+      border: 2px solid #2196f3;
+      border-radius: 10px;
+      font-size: 16px;
+      outline: none;
+      transition: 0.3s;
+    }
+
+    #question:focus {
+      border-color: #0d47a1;
+      box-shadow: 0 0 10px rgba(33,150,243,0.5);
+    }
+
+    button {
+      background: #2196f3;
+      border: none;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 16px;
+      cursor: pointer;
+      margin-top: 10px;
+      transition: 0.3s;
+    }
+
+    button:hover {
+      background: #1976d2;
+    }
+
+    #answer-container {
+      margin-top: 30px;
+      background: #fff;
+      padding: 25px;
+      border-radius: 12px;
+      width: 70%;
+      box-shadow: 0 0 15px rgba(0,0,0,0.1);
+      text-align: left;
+      position: relative;
+      transition: opacity 0.5s ease;
+    }
+
+    .info-icon {
+      cursor: pointer;
+      font-size: 18px;
+      margin-right: 10px;
+      color: #1565c0;
+    }
+
+    .info-tooltip {
+      display: none;
+      position: absolute;
+      background: #333;
+      color: white;
+      padding: 10px;
+      border-radius: 8px;
+      font-size: 13px;
+      top: 35px;
+      left: 10px;
+      z-index: 10;
+      white-space: pre-line;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .from-memory {
+      background: #e3f2fd;
+      border-left: 5px solid #2196f3;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚔️ Code Battle AI</h1>
+  <input id="question" placeholder="Ask something..." />
+  <button onclick="askQuestion()">Ask</button>
+
+  <div id="answer-container"></div>
+
+  <script>
+    function createInfoIcon(metadata) {
+      const icon = document.createElement('span');
+      icon.textContent = 'ℹ️';
+      icon.classList.add('info-icon');
+
+      const tooltip = document.createElement('div');
+      tooltip.classList.add('info-tooltip');
+      tooltip.textContent = `Matched Question: ${metadata.matched_question || 'None'}
+Match: ${metadata.match_percent || 'N/A'}%
+Stored on: ${metadata.timestamp || 'N/A'}`;
+
+      icon.addEventListener('click', () => {
+        tooltip.style.display = tooltip.style.display === 'none' ? 'block' : 'none';
+      });
+
+      const wrapper = document.createElement('div');
+      wrapper.style.display = 'inline-block';
+      wrapper.appendChild(icon);
+      wrapper.appendChild(tooltip);
+      return wrapper;
+    }
+
+    async function askQuestion(forceNew = false) {
+      const question = document.getElementById("question").value.trim();
+      if (!question) return;
+
+      const response = await fetch("/ask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, force_new: forceNew })
+      });
+
+      const data = await response.json();
+      const container = document.getElementById("answer-container");
+      container.innerHTML = '';
+      container.style.opacity = 0;
+
+      if (data.from_memory) {
+        if (typeof createInfoIcon === 'function') {
+          const infoIcon = createInfoIcon(data);
+          container.appendChild(infoIcon);
+        }
+
+        const memoryDiv = document.createElement('div');
+        memoryDiv.classList.add('from-memory');
+        memoryDiv.innerHTML = `
+          <b>Found similar question:</b> ${data.matched_question}<br>
+          <b>Match:</b> ${data.match_percent}%<br>
+          <b>Stored on:</b> ${data.timestamp}<br><br>
+        `;
+
+        const newButton = document.createElement('button');
+        newButton.textContent = 'Get New Answer';
+        newButton.onclick = () => askQuestion(true);
+
+        container.appendChild(memoryDiv);
+        container.appendChild(newButton);
+      }
+
+      const answerDiv = document.createElement('div');
+      answerDiv.innerHTML = `<p><b>Answer:</b> ${data.answer}</p>`;
+      container.appendChild(answerDiv);
+      setTimeout(() => (container.style.opacity = 1), 100);
+    }
+
+    // Allow pressing Enter to submit
+    document.getElementById("question").addEventListener("keypress", (e) => {
+      if (e.key === "Enter") askQuestion();
+    });
+  </script>
+</body>
+</html>
