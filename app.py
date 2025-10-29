@@ -1,27 +1,36 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, session
 import ollama
 import chromadb
 from datetime import datetime
 
 app = Flask(__name__)
+app.secret_key = "supersecret"
 
+MODEL = "llama3"
+MAX_WORDS = 250
+
+# Chroma DB for memory
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 collection = chroma_client.get_or_create_collection("qa_collection")
 
 @app.route('/')
 def index():
+    if 'conversation' not in session:
+        session['conversation'] = [{"role": "system", "content": "You are a helpful AI assistant."}]
     return render_template('index.html')
 
 @app.route('/ask', methods=['POST'])
 def ask():
     data = request.json
-    user_question = data['question'].strip()
+    user_question = data.get('question', '').strip()
     force_new = data.get('force_new', False)
-    max_words = 80
+
+    if not user_question:
+        return jsonify({"answer": "Please enter a question.", "from_memory": False})
 
     skip_memory = force_new or any(word in user_question.lower() for word in ["random", "new", "generate", "fresh"])
 
-    # Query stored answers
+    # Check Chroma memory
     if not skip_memory:
         try:
             results = collection.query(query_texts=[user_question], n_results=1)
@@ -32,7 +41,7 @@ def ask():
                 similarity = results.get('distances', [[1]])[0][0]
                 match_percent = round((1 - similarity) * 100, 2)
 
-                if match_percent > 75 and len(user_question) > 5:
+                if match_percent > 70 and len(user_question) > 5:
                     return jsonify({
                         "answer": stored_answer,
                         "match_percent": match_percent,
@@ -43,26 +52,25 @@ def ask():
         except Exception:
             pass
 
-    # Generate a new response with Ollama
+    # Append user message to conversation
+    conversation = session.get('conversation', [])
+    conversation.append({"role": "user", "content": user_question})
+
+    # Generate response from Ollama llama3
     try:
-        response = ollama.chat(model="llama3", messages=[{"role": "user", "content": user_question}])
-        answer = response['message']['content'].strip()
+        response = ollama.chat(model=MODEL, messages=conversation)
+        answer = response.get('message', {}).get('content', '').strip() or "No response generated."
     except Exception as e:
         answer = f"Error: Could not generate a response. ({e})"
 
-    # Apply word limit
-    words = answer.split()
-    if len(words) > max_words:
-        answer = " ".join(words[:max_words]) + "..."
+    conversation.append({"role": "assistant", "content": answer})
+    session['conversation'] = conversation
 
     # Store in Chroma
     try:
         collection.add(
             documents=[answer],
-            metadatas=[{
-                "question": user_question,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }],
+            metadatas=[{"question": user_question, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}],
             ids=[str(datetime.now().timestamp())]
         )
     except Exception:
