@@ -1,176 +1,110 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Code Battle AI</title>
-  <style>
-    body {
-      font-family: 'Poppins', sans-serif;
-      background: linear-gradient(135deg, #e3f2fd, #bbdefb);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      margin: 0;
-      padding: 40px;
-    }
-
-    h1 {
-      color: #0d47a1;
-      margin-bottom: 20px;
-    }
-
-    #question {
-      width: 60%;
-      padding: 12px;
-      border: 2px solid #2196f3;
-      border-radius: 10px;
-      font-size: 16px;
-      outline: none;
-      transition: 0.3s;
-    }
-
-    #question:focus {
-      border-color: #0d47a1;
-      box-shadow: 0 0 10px rgba(33,150,243,0.5);
-    }
-
-    button {
-      background: #2196f3;
-      border: none;
-      color: white;
-      padding: 12px 20px;
-      border-radius: 10px;
-      font-size: 16px;
-      cursor: pointer;
-      margin-top: 10px;
-      transition: 0.3s;
-    }
-
-    button:hover {
-      background: #1976d2;
-    }
-
-    #answer-container {
-      margin-top: 30px;
-      background: #fff;
-      padding: 25px;
-      border-radius: 12px;
-      width: 70%;
-      box-shadow: 0 0 15px rgba(0,0,0,0.1);
-      text-align: left;
-      position: relative;
-      transition: opacity 0.5s ease;
-    }
-
-    .info-icon {
-      cursor: pointer;
-      font-size: 18px;
-      margin-right: 10px;
-      color: #1565c0;
-    }
-
-    .info-tooltip {
-      display: none;
-      position: absolute;
-      background: #333;
-      color: white;
-      padding: 10px;
-      border-radius: 8px;
-      font-size: 13px;
-      top: 35px;
-      left: 10px;
-      z-index: 10;
-      white-space: pre-line;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    }
-
-    .from-memory {
-      background: #e3f2fd;
-      border-left: 5px solid #2196f3;
-      padding: 10px;
-      border-radius: 8px;
-      margin-bottom: 10px;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Code Battle AI</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon/fonts/remixicon.css">
+<style>
+body{font-family:'Poppins',sans-serif;background:#0d1b2a;color:#fff;margin:0;padding:0;display:flex;flex-direction:column;align-items:center;min-height:100vh}
+header{background:linear-gradient(90deg,#7b2ff7,#f107a3);width:100%;padding:15px;text-align:center;font-size:24px;font-weight:600}
+#chat-container{width:90%;max-width:900px;flex:1;display:flex;flex-direction:column;margin-top:20px}
+.message{background:#1b263b;border-radius:15px;padding:15px;margin:10px;max-width:70%;position:relative;word-wrap:break-word;white-space:pre-wrap}
+.user{align-self:flex-end;background:#4e9af1}
+.ai{align-self:flex-start}
+#input-area{display:flex;width:90%;max-width:900px;margin:20px auto}
+#question{flex:1;padding:12px;border:none;border-radius:10px;outline:none;font-size:16px}
+#send{background:#7b2ff7;color:white;border:none;padding:12px 20px;border-radius:10px;cursor:pointer;font-size:16px}
+.icon-btn{position:absolute;top:10px;font-size:18px;color:#aaa;cursor:pointer;transition:0.3s}
+.icon-btn:hover{color:#fff}
+.info-icon{left:-35px}
+.refresh-icon{right:-35px}
+#metadata-modal{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#1b263b;padding:20px;border-radius:12px;display:none;z-index:10;width:300px;box-shadow:0 0 20px rgba(0,0,0,0.5)}
+#metadata-modal p{margin:8px 0}
+#metadata-modal button{background:#7b2ff7;border:none;padding:8px 12px;color:white;border-radius:8px;margin-top:10px;cursor:pointer}
+</style>
 </head>
 <body>
-  <h1>⚔️ Code Battle AI</h1>
-  <input id="question" placeholder="Ask something..." />
-  <button onclick="askQuestion()">Ask</button>
+<header>⚔️ Code Battle AI</header>
+<div id="chat-container"></div>
+<div id="input-area">
+  <input type="text" id="question" placeholder="Ask me anything...">
+  <button id="send">➤</button>
+</div>
 
-  <div id="answer-container"></div>
+<div id="metadata-modal">
+  <h3>Response Info</h3>
+  <p id="meta-model"></p>
+  <p id="meta-tokens"></p>
+  <p id="meta-time"></p>
+  <p id="meta-date"></p>
+  <button onclick="closeMetadata()">Close</button>
+</div>
 
-  <script>
-    function createInfoIcon(metadata) {
-      const icon = document.createElement('span');
-      icon.textContent = 'ℹ️';
-      icon.classList.add('info-icon');
+<script>
+const chatContainer=document.getElementById('chat-container');
+const questionInput=document.getElementById('question');
+const sendBtn=document.getElementById('send');
+let lastMetadata={};
 
-      const tooltip = document.createElement('div');
-      tooltip.classList.add('info-tooltip');
-      tooltip.textContent = `Matched Question: ${metadata.matched_question || 'None'}
-Match: ${metadata.match_percent || 'N/A'}%
-Stored on: ${metadata.timestamp || 'N/A'}`;
+sendBtn.onclick=async()=>{await sendMessage();};
+questionInput.addEventListener('keypress',e=>{if(e.key==="Enter")sendMessage();});
 
-      icon.addEventListener('click', () => {
-        tooltip.style.display = tooltip.style.display === 'none' ? 'block' : 'none';
-      });
+async function sendMessage(forceNew=false){
+  const text=questionInput.value.trim();
+  if(!text)return;
+  appendMessage(text,'user');
+  questionInput.value='';
+  const aiMessage=appendMessage('Thinking...','ai');
+  const res=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:text,force_new:forceNew})});
+  const data=await res.json();
+  aiMessage.querySelector('.message-text').textContent=data.answer;
+  addIcons(aiMessage,data,text);
+}
 
-      const wrapper = document.createElement('div');
-      wrapper.style.display = 'inline-block';
-      wrapper.appendChild(icon);
-      wrapper.appendChild(tooltip);
-      return wrapper;
-    }
+function appendMessage(content,role){
+  const div=document.createElement('div');
+  div.className=`message ${role}`;
+  const textDiv=document.createElement('div');
+  textDiv.className='message-text';
+  textDiv.style.whiteSpace='pre-wrap';
+  textDiv.textContent=content;
+  div.appendChild(textDiv);
+  chatContainer.appendChild(div);
+  chatContainer.scrollTop=chatContainer.scrollHeight;
+  return div;
+}
 
-    async function askQuestion(forceNew = false) {
-      const question = document.getElementById("question").value.trim();
-      if (!question) return;
+function addIcons(messageDiv,metadata,question){
+  const info=document.createElement('i');
+  info.className='ri-information-line icon-btn info-icon';
+  info.onclick=()=>showMetadata(metadata);
 
-      const response = await fetch("/ask", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question, force_new: forceNew })
-      });
+  const refresh=document.createElement('i');
+  refresh.className='ri-refresh-line icon-btn refresh-icon';
+  refresh.onclick=()=>regenerateAnswer(messageDiv,question);
 
-      const data = await response.json();
-      const container = document.getElementById("answer-container");
-      container.innerHTML = '';
-      container.style.opacity = 0;
+  messageDiv.appendChild(info);
+  messageDiv.appendChild(refresh);
+  lastMetadata=metadata;
+}
 
-      if (data.from_memory) {
-        if (typeof createInfoIcon === 'function') {
-          const infoIcon = createInfoIcon(data);
-          container.appendChild(infoIcon);
-        }
+function showMetadata(meta){
+  document.getElementById('meta-model').textContent=`Model: ${meta.model}`;
+  document.getElementById('meta-tokens').textContent=`Tokens: ${meta.tokens}`;
+  document.getElementById('meta-time').textContent=`Response Time: ${meta.time}s`;
+  document.getElementById('meta-date').textContent=`Generated: ${meta.timestamp}`;
+  document.getElementById('metadata-modal').style.display='block';
+}
 
-        const memoryDiv = document.createElement('div');
-        memoryDiv.classList.add('from-memory');
-        memoryDiv.innerHTML = `
-          <b>Found similar question:</b> ${data.matched_question}<br>
-          <b>Match:</b> ${data.match_percent}%<br>
-          <b>Stored on:</b> ${data.timestamp}<br><br>
-        `;
+function closeMetadata(){document.getElementById('metadata-modal').style.display='none';}
 
-        const newButton = document.createElement('button');
-        newButton.textContent = 'Get New Answer';
-        newButton.onclick = () => askQuestion(true);
-
-        container.appendChild(memoryDiv);
-        container.appendChild(newButton);
-      }
-
-      const answerDiv = document.createElement('div');
-      answerDiv.innerHTML = `<p><b>Answer:</b> ${data.answer}</p>`;
-      container.appendChild(answerDiv);
-      setTimeout(() => (container.style.opacity = 1), 100);
-    }
-
-    // Allow pressing Enter to submit
-    document.getElementById("question").addEventListener("keypress", (e) => {
-      if (e.key === "Enter") askQuestion();
-    });
-  </script>
+async function regenerateAnswer(oldDiv,question){
+  oldDiv.querySelector('.message-text').textContent='Regenerating...';
+  const res=await fetch('/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:question,force_new:true})});
+  const data=await res.json();
+  oldDiv.querySelector('.message-text').textContent=data.answer;
+  addIcons(oldDiv,data,question);
+}
+</script>
 </body>
 </html>
